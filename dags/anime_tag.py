@@ -29,13 +29,16 @@ def extract_and_load():
         try:
             genres = json.loads(value)
             if isinstance(genres, list):
-                return [tag.strip() for tag in genres if isinstance(tag, str)]
+                return [str(tag).strip() for tag in genres if isinstance(tag, (str, float, int))]
         except Exception:
             return []
         return []
 
     df["genres"] = df["genres"].apply(parse_genres)
     df = df.explode("genres")
+
+    # Convert genres to string to ensure compatibility with ClickHouse
+    df["genres"] = df["genres"].astype(str)
 
     # Create unique tag table
     unique_tags = pd.DataFrame(df["genres"].drop_duplicates()).reset_index(drop=True)
@@ -65,7 +68,7 @@ def extract_and_load():
     """)
 
     # Insert data
-    client.insert_df("tags", unique_tags[["tag_id", "genres"]].rename(columns={"genres": "name"}))
+    client.insert_df("tags", unique_tags.rename(columns={"genres": "name"}))
     client.insert_df("anime_tags", anime_tags)
 
 
