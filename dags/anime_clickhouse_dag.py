@@ -1,3 +1,11 @@
+import pandas as pd
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.hooks.base import BaseHook
+from clickhouse_connect import get_client
+from sqlalchemy import create_engine
+from datetime import datetime, date
+
 def extract_and_load():
     # Get MySQL conn from Airflow
     mysql_conn = BaseHook.get_connection("weeb-readonly")
