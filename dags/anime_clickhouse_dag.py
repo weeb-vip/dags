@@ -1,11 +1,3 @@
-import pandas as pd
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.hooks.base import BaseHook
-from clickhouse_connect import get_client
-from sqlalchemy import create_engine
-from datetime import datetime, date
-
 def extract_and_load():
     # Get MySQL conn from Airflow
     mysql_conn = BaseHook.get_connection("weeb-readonly")
@@ -21,15 +13,22 @@ def extract_and_load():
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
 
-    # Parse and filter invalid values
-    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
-    df = df[df["start_date"].apply(lambda x: isinstance(x, date))]
+    # Fix types and handle bad values
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    df = df[df["start_date"].notnull()]
+    df["start_date"] = df["start_date"].dt.date
 
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
     df["title_en"] = df["title_en"].astype("string")
     df["id"] = df["id"].astype("string")
 
-    # Get ClickHouse conn from Airflow
+    # Final drop of any rows that might still be problematic
+    df = df.dropna(subset=["start_date"])
+
+    # Optional: validate no remaining nulls in start_date
+    assert df["start_date"].isnull().sum() == 0, "Null values still present in start_date"
+
+    # ClickHouse insert
     ch_conn = BaseHook.get_connection("clickhouse")
     client = get_client(host=ch_conn.host, port=int(ch_conn.port))
 
@@ -43,9 +42,3 @@ def extract_and_load():
     """)
 
     client.insert_df("anime_summary", df)
-
-with DAG("anime_to_clickhouse", start_date=datetime(2024, 1, 1), schedule="@daily", catchup=False) as dag:
-    PythonOperator(
-        task_id="load_anime_data",
-        python_callable=extract_and_load
-    )
