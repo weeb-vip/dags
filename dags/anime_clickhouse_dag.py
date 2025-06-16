@@ -31,7 +31,7 @@ def extract_and_load():
         CREATE TABLE IF NOT EXISTS anime_summary (
             id UInt64,
             title_en String,
-            episode_count UInt32,
+            episodes UInt32,
             start_date Date
         ) ENGINE = MergeTree ORDER BY id
     """)
