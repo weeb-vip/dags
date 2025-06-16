@@ -22,16 +22,10 @@ def extract_and_load():
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
 
-    # Fix types and handle bad values
-    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    # Convert start_date column
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
 
-    # Drop NaT
-    df = df[df["start_date"].notnull()]
-
-    # Convert pd.Timestamp to datetime.date
-    df["start_date"] = df["start_date"].apply(lambda x: x.date() if isinstance(x, pd.Timestamp) else x)
-
-    # Make sure column is entirely datetime.date or None
+    # Drop any rows where start_date is not a valid `date`
     df = df[df["start_date"].apply(lambda x: isinstance(x, date))]
 
 
