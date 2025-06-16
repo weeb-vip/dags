@@ -22,11 +22,14 @@ def extract_and_load():
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
 
-    # Convert start_date column
-    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
+    # Parse and clean `start_date`
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
 
-    # Drop any rows where start_date is not a valid `date`
-    df = df[df["start_date"].apply(lambda x: isinstance(x, date))]
+    # Drop nulls
+    df = df[df["start_date"].notna()]
+
+    # Convert to `datetime.date`
+    df["start_date"] = df["start_date"].dt.date
 
 
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
@@ -36,8 +39,6 @@ def extract_and_load():
     # Final drop of any rows that might still be problematic
     df = df.dropna(subset=["start_date"])
 
-    # Optional: validate no remaining nulls in start_date
-    assert df["start_date"].isnull().sum() == 0, "Null values still present in start_date"
 
     # ClickHouse insert
     ch_conn = BaseHook.get_connection("clickhouse")
