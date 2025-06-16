@@ -22,6 +22,7 @@ def extract_and_load():
 
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
 
     # Get ClickHouse conn from Airflow
     ch_conn = BaseHook.get_connection("clickhouse")
