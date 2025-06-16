@@ -15,7 +15,7 @@ def extract_and_load():
     df = pd.read_sql("SELECT id, title_en, episode_count, start_date FROM anime", engine)
 
     # Get ClickHouse conn from Airflow
-    ch_conn = BaseHook.get_connection("clickhouse_default")
+    ch_conn = BaseHook.get_connection("clickhouse")
     client = get_client(host=ch_conn.host, port=int(ch_conn.port))
 
     client.command("""
