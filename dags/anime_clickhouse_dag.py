@@ -29,7 +29,7 @@ def extract_and_load():
 
     client.command("""
         CREATE TABLE IF NOT EXISTS anime_summary (
-            id UInt64,
+            id String,
             title_en String,
             episodes UInt32,
             start_date Date
