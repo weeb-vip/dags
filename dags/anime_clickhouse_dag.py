@@ -50,3 +50,10 @@ def extract_and_load():
     """)
 
     client.insert_df("anime_summary", df)
+
+
+with DAG("anime_to_clickhouse", start_date=datetime(2024, 1, 1), schedule="@daily", catchup=False) as dag:
+    PythonOperator(
+        task_id="load_anime_data",
+        python_callable=extract_and_load
+    )
