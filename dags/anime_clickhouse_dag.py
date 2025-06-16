@@ -30,9 +30,9 @@ def extract_and_load():
     client.command("""
         CREATE TABLE IF NOT EXISTS anime_summary (
             id String,
-            title_en String,
-            episodes UInt32,
-            start_date Date
+            title_en Nullable(String),
+            episodes Nullable(UInt32),
+            start_date Nullable(Date)
         ) ENGINE = MergeTree ORDER BY id
     """)
     client.insert_df("anime_summary", df)
