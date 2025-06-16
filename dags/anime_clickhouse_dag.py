@@ -23,6 +23,11 @@ def extract_and_load():
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
     df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
+    df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
+    df["title_en"] = df["title_en"].astype("string")
+
+    # Optional: drop bad rows
+    df = df[df["start_date"].notna()]
 
     # Get ClickHouse conn from Airflow
     ch_conn = BaseHook.get_connection("clickhouse")
