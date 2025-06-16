@@ -4,7 +4,7 @@ from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
 from clickhouse_connect import get_client
 from sqlalchemy import create_engine
-from datetime import datetime
+from datetime import datetime, date
 
 def extract_and_load():
     # Get MySQL conn from Airflow
@@ -14,20 +14,20 @@ def extract_and_load():
         f"@{mysql_conn.host}:{mysql_conn.port}/{mysql_conn.schema}"
     )
 
-    # Use SSL connection explicitly
     engine = create_engine(
         mysql_url,
         connect_args={"ssl": {"check_hostname": False}}
     )
 
-
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
+
+    # Parse and filter invalid values
     df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
+    df = df[df["start_date"].apply(lambda x: isinstance(x, date))]
+
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
     df["title_en"] = df["title_en"].astype("string")
-
-    # Optional: drop bad rows
-    df = df[df["start_date"].notna()]
+    df["id"] = df["id"].astype("string")
 
     # Get ClickHouse conn from Airflow
     ch_conn = BaseHook.get_connection("clickhouse")
@@ -41,6 +41,7 @@ def extract_and_load():
             start_date Nullable(Date)
         ) ENGINE = MergeTree ORDER BY id
     """)
+
     client.insert_df("anime_summary", df)
 
 with DAG("anime_to_clickhouse", start_date=datetime(2024, 1, 1), schedule="@daily", catchup=False) as dag:
