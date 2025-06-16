@@ -6,6 +6,7 @@ from clickhouse_connect import get_client
 from sqlalchemy import create_engine
 from datetime import datetime, date
 
+
 def extract_and_load():
     # Get MySQL conn from Airflow
     mysql_conn = BaseHook.get_connection("weeb-readonly")
@@ -31,7 +32,8 @@ def extract_and_load():
     df["start_date"] = df["start_date"].apply(lambda x: x.date() if isinstance(x, pd.Timestamp) else x)
 
     # Make sure column is entirely datetime.date or None
-    df = df[df["start_date"].apply(lambda x: isinstance(x, datetime.date))]
+    df = df[df["start_date"].apply(lambda x: isinstance(x, date))]
+
 
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
     df["title_en"] = df["title_en"].astype("string")
