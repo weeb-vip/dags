@@ -22,23 +22,16 @@ def extract_and_load():
 
     df = pd.read_sql("SELECT id, title_en, episodes, start_date FROM anime", engine)
 
-    # Parse and clean `start_date`
-    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    # Extract just the year
+    df["year"] = pd.to_datetime(df["start_date"], errors="coerce").dt.year.astype("Int64")
 
-    # Drop nulls
-    df = df[df["start_date"].notna()]
+    # Drop start_date column
+    df.drop(columns=["start_date"], inplace=True)
 
-    # Convert to `datetime.date`
-    df["start_date"] = df["start_date"].dt.date
-
-
+    # Clean up types
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").astype("Int64")
     df["title_en"] = df["title_en"].astype("string")
     df["id"] = df["id"].astype("string")
-
-    # Final drop of any rows that might still be problematic
-    df = df.dropna(subset=["start_date"])
-
 
     # ClickHouse insert
     ch_conn = BaseHook.get_connection("clickhouse")
@@ -49,7 +42,7 @@ def extract_and_load():
             id String,
             title_en Nullable(String),
             episodes Nullable(UInt32),
-            start_date Nullable(Date)
+            year Nullable(UInt16)
         ) ENGINE = MergeTree ORDER BY id
     """)
 
