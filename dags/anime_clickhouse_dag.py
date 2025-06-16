@@ -9,7 +9,12 @@ from datetime import datetime
 def extract_and_load():
     # Get MySQL conn from Airflow
     mysql_conn = BaseHook.get_connection("weeb-readonly")
-    mysql_url = f"mysql+pymysql://{mysql_conn.login}:{mysql_conn.password}@{mysql_conn.host}:{mysql_conn.port}/{mysql_conn.schema}"
+    mysql_url = (
+    f"mysql+pymysql://{mysql_conn.login}:{mysql_conn.password}"
+    f"@{mysql_conn.host}:{mysql_conn.port}/{mysql_conn.schema}"
+    f"?ssl=true"
+)
+
     engine = create_engine(mysql_url)
 
     df = pd.read_sql("SELECT id, title_en, episode_count, start_date FROM anime", engine)
