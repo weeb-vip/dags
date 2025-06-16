@@ -17,7 +17,7 @@ def extract_and_load():
     # Use SSL connection explicitly
     engine = create_engine(
         mysql_url,
-        connect_args={"ssl": {}}
+        connect_args={"ssl": {"check_hostname": False}}
     )
 
 
