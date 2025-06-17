@@ -57,7 +57,7 @@ def extract_and_load():
         CREATE TABLE IF NOT EXISTS tags (
             tag_id UInt32,
             name String
-        ) ENGINE = MergeTree ORDER BY tag_id
+        ) ENGINE = ReplacingMergeTree() ORDER BY tag_id
     """)
 
     client.command("""
@@ -70,6 +70,10 @@ def extract_and_load():
     # Insert data
     client.insert_df("tags", unique_tags.rename(columns={"genres": "name"}))
     client.insert_df("anime_tags", anime_tags)
+
+    # Force deduplication (only useful if using ReplacingMergeTree)
+    client.command("OPTIMIZE TABLE tags FINAL")
+    client.command("OPTIMIZE TABLE anime_tags FINAL")
 
 
 with DAG("anime_tags_to_clickhouse", start_date=datetime(2024, 1, 1), schedule="@daily", catchup=False) as dag:

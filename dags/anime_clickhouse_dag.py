@@ -43,10 +43,14 @@ def extract_and_load():
             title_en Nullable(String),
             episodes Nullable(UInt32),
             year Nullable(UInt16)
-        ) ENGINE = MergeTree ORDER BY id
+        ) ENGINE = ReplacingMergeTree()
+        ORDER BY id;
     """)
 
     client.insert_df("anime_summary", df)
+
+       # Force deduplication after insert
+    client.command("OPTIMIZE TABLE anime_summary FINAL")
 
 
 with DAG("anime_to_clickhouse", start_date=datetime(2024, 1, 1), schedule="@daily", catchup=False) as dag:
