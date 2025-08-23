@@ -16,21 +16,33 @@ def process_anime_event(message, **context):
     logger = logging.getLogger(__name__)
     
     try:
-        # Parse the message
-        if isinstance(message, bytes):
-            message_str = message.decode('utf-8')
+        # Extract the actual message value from confluent_kafka Message object
+        if hasattr(message, 'value'):
+            message_bytes = message.value()
+            topic = message.topic()
+            logger.info(f"Received message from topic: {topic}")
         else:
-            message_str = str(message)
+            message_bytes = message
+            topic = 'unknown'
+        
+        # Parse the message bytes
+        if isinstance(message_bytes, bytes):
+            message_str = message_bytes.decode('utf-8')
+        else:
+            message_str = str(message_bytes)
             
         # Log the received event
-        logger.info(f"Received anime-db event: {message_str}")
+        logger.info(f"Raw message content: {message_str[:200]}...")  # Log first 200 chars
         
         # Parse JSON event data
-        event_data = json.loads(message_str) if message_str.startswith('{') else {"raw_message": message_str}
+        if message_str.startswith('{'):
+            event_data = json.loads(message_str)
+        else:
+            event_data = {"raw_message": message_str}
         
         # Extract table name from topic or event data
-        table_name = event_data.get('table', 'unknown')
-        operation = event_data.get('op', 'unknown')  # INSERT, UPDATE, DELETE
+        table_name = event_data.get('table', topic.split('.')[-1] if '.' in topic else 'unknown')
+        operation = event_data.get('op', event_data.get('operation', 'unknown'))  # INSERT, UPDATE, DELETE
         
         logger.info(f"Processing {operation} event for table: {table_name}")
         
@@ -39,11 +51,14 @@ def process_anime_event(message, **context):
             "table": table_name,
             "operation": operation,
             "event_data": event_data,
+            "topic": topic,
             "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
         logger.error(f"Error processing anime event: {str(e)}")
+        logger.error(f"Message type: {type(message)}")
+        logger.error(f"Message dir: {dir(message)}")
         raise
 
 def insert_to_timescale(**context):
