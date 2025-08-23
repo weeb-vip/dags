@@ -130,9 +130,8 @@ with DAG(
         kafka_config_id="kafka_default",  # Connection ID in Airflow
         topics=["anime-db.public.*"],  # Pattern to match all anime-db.public tables
         apply_function=lambda message: message is not None,  # Accept any non-null message
-        poke_interval=30,  # Check every 30 seconds
-        timeout=600,  # Timeout after 10 minutes
-        soft_fail=True
+        poll_timeout=30,  # Time to wait for Kafka message
+        poll_interval=5   # Sleep time after reaching log end
     )
     
     # Consumer operator to process the events
