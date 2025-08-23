@@ -128,7 +128,7 @@ with DAG(
     wait_for_anime_events = AwaitMessageSensor(
         task_id="wait_for_anime_events",
         kafka_config_id="kafka_default",  # Connection ID in Airflow
-        topics=["anime-db.public.*"],  # Pattern to match all anime-db.public tables
+        topics=["anime-db.public.anime", "anime-db.public.anime_character", "anime-db.public.anime_character_staff_link", "anime-db.public.anime_episodes", "anime-db.public.anime_staff"],  # Actual Redpanda topics
         apply_function=lambda message: message is not None,  # Accept any non-null message
         poll_timeout=30,  # Time to wait for Kafka message
         poll_interval=5   # Sleep time after reaching log end
@@ -138,7 +138,7 @@ with DAG(
     consume_anime_events = ConsumeFromTopicOperator(
         task_id="consume_anime_events",
         kafka_config_id="kafka_default",
-        topics=["anime-db.public.*"],  # Pattern to match all anime-db.public tables
+        topics=["anime-db.public.anime", "anime-db.public.anime_character", "anime-db.public.anime_character_staff_link", "anime-db.public.anime_episodes", "anime-db.public.anime_staff"],  # Actual Redpanda topics
         apply_function=process_anime_event,
         max_messages=100,  # Process up to 100 messages per run
         commit_cadence="end_of_operator"  # Commit offsets at the end
