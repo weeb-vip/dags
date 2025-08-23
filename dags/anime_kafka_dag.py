@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import json
 import logging
 
-def accept_any_message(message):
+def accept_any_message(message, **kwargs):
     """Apply function for AwaitMessageSensor - accepts any non-null message"""
     return message is not None
 
@@ -133,7 +133,7 @@ with DAG(
         task_id="wait_for_anime_events",
         kafka_config_id="kafka_default",  # Connection ID in Airflow
         topics=["anime-db.public.anime", "anime-db.public.anime_character", "anime-db.public.anime_character_staff_link", "anime-db.public.anime_episodes", "anime-db.public.anime_staff"],  # Actual Redpanda topics
-        apply_function=accept_any_message,  # Accept any non-null message
+        apply_function="anime_kafka_dag.accept_any_message",  # Accept any non-null message (string reference)
         poll_timeout=30,  # Time to wait for Kafka message
         poll_interval=5   # Sleep time after reaching log end
     )
