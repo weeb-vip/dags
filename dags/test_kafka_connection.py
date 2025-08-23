@@ -9,14 +9,23 @@ def test_kafka_connection(**context):
     logger = logging.getLogger(__name__)
     
     try:
-        # Test connection using Kafka hook
-        kafka_hook = KafkaAdminClientHook(kafka_config_id='kafka_default')
+        # Test connection using confluent_kafka directly
+        from confluent_kafka import Consumer
+        from airflow.hooks.base import BaseHook
         
         logger.info("Attempting to connect to Kafka/Redpanda...")
         
-        # Get admin client and list topics
-        admin_client = kafka_hook.get_conn()
-        metadata = admin_client.list_topics(timeout=10)
+        # Get connection details
+        connection = BaseHook.get_connection('kafka_default')
+        config = connection.extra_dejson
+        
+        logger.info(f"Connection config: {config}")
+        
+        # Create consumer to test connection
+        consumer = Consumer(config)
+        
+        # List topics
+        metadata = consumer.list_topics(timeout=10)
         
         logger.info("✅ Successfully connected to Kafka/Redpanda!")
         logger.info(f"Available topics: {list(metadata.topics.keys())}")
@@ -24,6 +33,8 @@ def test_kafka_connection(**context):
         # Look for anime-db topics specifically
         anime_topics = [topic for topic in metadata.topics.keys() if 'anime-db' in topic]
         logger.info(f"Anime-db topics found: {anime_topics}")
+        
+        consumer.close()
         
         return {
             "connection_status": "success",
