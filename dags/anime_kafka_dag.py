@@ -23,9 +23,9 @@ def consume_and_process_kafka_events(**context):
         connection = BaseHook.get_connection('kafka_default')
         config = connection.extra_dejson.copy()
         config.update({
-            'group.id': 'anime-consumer-airflow',
+            'group.id': f'anime-consumer-airflow-{datetime.now().strftime("%Y%m%d-%H%M%S")}',  # Unique group to read from beginning
             'enable.auto.commit': False,
-            'auto.offset.reset': 'latest'  # Only process new messages
+            'auto.offset.reset': 'earliest'  # Read from beginning
         })
         
         logger.info(f"Creating Kafka consumer with config: {config}")
