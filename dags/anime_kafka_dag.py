@@ -3,6 +3,7 @@ from airflow.providers.apache.kafka.sensors.kafka import AwaitMessageSensor
 from airflow.providers.apache.kafka.operators.consume import ConsumeFromTopicOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.hooks.base import BaseHook
 from datetime import datetime, timedelta
 import json
 import logging
@@ -10,6 +11,65 @@ import logging
 def accept_any_message(message, **kwargs):
     """Apply function for AwaitMessageSensor - accepts any non-null message"""
     return message is not None
+
+def consume_and_process_kafka_events(**context):
+    """Custom Kafka consumer that processes messages and returns data via XCom"""
+    from confluent_kafka import Consumer
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get connection details
+        connection = BaseHook.get_connection('kafka_default')
+        config = connection.extra_dejson.copy()
+        config.update({
+            'group.id': 'anime-consumer-airflow',
+            'enable.auto.commit': False,
+            'auto.offset.reset': 'latest'  # Only process new messages
+        })
+        
+        logger.info(f"Creating Kafka consumer with config: {config}")
+        
+        # Create consumer
+        consumer = Consumer(config)
+        
+        # Subscribe to topics
+        topics = ["anime-db.public.anime", "anime-db.public.anime_character", 
+                 "anime-db.public.anime_character_staff_link", "anime-db.public.anime_episodes", 
+                 "anime-db.public.anime_staff"]
+        consumer.subscribe(topics)
+        
+        processed_events = []
+        max_messages = 5  # Process just a few messages
+        
+        logger.info(f"Polling for up to {max_messages} messages...")
+        
+        for i in range(max_messages):
+            msg = consumer.poll(timeout=10.0)
+            if msg is None:
+                logger.info("No more messages available")
+                break
+                
+            if msg.error():
+                logger.error(f"Consumer error: {msg.error()}")
+                continue
+                
+            # Process the message using our existing function
+            processed_event = process_anime_event(msg, **context)
+            processed_events.append(processed_event)
+            
+            logger.info(f"Processed message {i+1}/{max_messages} from topic {msg.topic()}")
+        
+        consumer.close()
+        
+        logger.info(f"Successfully processed {len(processed_events)} events")
+        
+        # Return the processed events for XCom
+        return processed_events
+        
+    except Exception as e:
+        logger.error(f"Error in custom Kafka consumer: {str(e)}")
+        raise
 
 def process_anime_event(message, **context):
     """Process incoming anime database events"""
@@ -95,16 +155,15 @@ def insert_to_timescale(**context):
         logger.warning("No processed data found to insert")
         return "No data to insert"
     
+    if isinstance(processed_data, list):
+        logger.info(f"Processing {len(processed_data)} events")
+    else:
+        logger.info("Processing single event")
+        processed_data = [processed_data]
+    
     try:
         # Connect to TimescaleDB using the 'timescale' connection
         postgres_hook = PostgresHook(postgres_conn_id='timescale')
-        
-        table_name = processed_data.get('table', 'unknown')
-        operation = processed_data.get('operation', 'unknown')
-        event_data = processed_data.get('event_data', {})
-        event_timestamp = processed_data.get('timestamp')
-        
-        logger.info(f"Inserting {operation} event for table {table_name} into TimescaleDB")
         
         # Create events table if not exists (optimized for Debezium)
         create_table_sql = """
@@ -126,32 +185,44 @@ def insert_to_timescale(**context):
         
         postgres_hook.run(create_table_sql)
         
-        # Insert the event data (Debezium format)
-        insert_sql = """
-        INSERT INTO anime_events (event_timestamp, source_table, operation, topic, before_data, after_data, full_event)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
+        inserted_count = 0
         
-        before_data = processed_data.get('before_data')
-        after_data = processed_data.get('after_data')
-        topic = processed_data.get('topic')
-        full_event = processed_data.get('event_data')
-        
-        postgres_hook.run(
-            insert_sql,
-            parameters=(
-                event_timestamp,
-                table_name,
-                operation,
-                topic,
-                json.dumps(before_data) if before_data else None,
-                json.dumps(after_data) if after_data else None,
-                json.dumps(full_event)
+        # Insert each event
+        for event in processed_data:
+            table_name = event.get('table', 'unknown')
+            operation = event.get('operation', 'unknown')
+            event_timestamp = event.get('timestamp')
+            before_data = event.get('before_data')
+            after_data = event.get('after_data')
+            topic = event.get('topic')
+            full_event = event.get('event_data')
+            
+            logger.info(f"Inserting {operation} event for table {table_name} into TimescaleDB")
+            
+            # Insert the event data (Debezium format)
+            insert_sql = """
+            INSERT INTO anime_events (event_timestamp, source_table, operation, topic, before_data, after_data, full_event)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            postgres_hook.run(
+                insert_sql,
+                parameters=(
+                    event_timestamp,
+                    table_name,
+                    operation,
+                    topic,
+                    json.dumps(before_data) if before_data else None,
+                    json.dumps(after_data) if after_data else None,
+                    json.dumps(full_event)
+                )
             )
-        )
+            
+            inserted_count += 1
+            logger.info(f"Successfully inserted event {inserted_count} for table {table_name}")
         
-        logger.info(f"Successfully inserted event for table {table_name} into TimescaleDB")
-        return f"Inserted {operation} event for {table_name}"
+        logger.info(f"Successfully inserted {inserted_count} events into TimescaleDB")
+        return f"Inserted {inserted_count} events into TimescaleDB"
         
     except Exception as e:
         logger.error(f"Error inserting to TimescaleDB: {str(e)}")
@@ -187,14 +258,11 @@ with DAG(
         poll_interval=5   # Sleep time after reaching log end
     )
     
-    # Consumer operator to process the events
-    consume_anime_events = ConsumeFromTopicOperator(
+    # Custom consumer operator that guarantees XCom data return
+    consume_anime_events = PythonOperator(
         task_id="consume_anime_events",
-        kafka_config_id="kafka_default",
-        topics=["anime-db.public.anime", "anime-db.public.anime_character", "anime-db.public.anime_character_staff_link", "anime-db.public.anime_episodes", "anime-db.public.anime_staff"],  # Actual Redpanda topics
-        apply_function=process_anime_event,
-        max_messages=100,  # Process up to 100 messages per run
-        commit_cadence="end_of_operator"  # Commit offsets at the end
+        python_callable=consume_and_process_kafka_events,
+        provide_context=True
     )
     
     # Insert data into TimescaleDB
