@@ -8,4 +8,7 @@ USER root
 USER airflow
 
 # Install Python dependencies
-RUN pip install --no-cache-dir clickhouse-connect
+RUN pip install --no-cache-dir \
+    clickhouse-connect \
+    apache-airflow-providers-apache-kafka \
+    apache-airflow-providers-postgres
