@@ -34,15 +34,36 @@ def process_anime_event(message, **context):
         # Log the received event
         logger.info(f"Raw message content: {message_str[:200]}...")  # Log first 200 chars
         
-        # Parse JSON event data
+        # Parse JSON event data (Debezium format)
         if message_str.startswith('{'):
             event_data = json.loads(message_str)
         else:
             event_data = {"raw_message": message_str}
         
-        # Extract table name from topic or event data
-        table_name = event_data.get('table', topic.split('.')[-1] if '.' in topic else 'unknown')
-        operation = event_data.get('op', event_data.get('operation', 'unknown'))  # INSERT, UPDATE, DELETE
+        # Handle Debezium message structure
+        if 'payload' in event_data:
+            payload = event_data['payload']
+            # Extract table name from Debezium source info
+            source_info = payload.get('source', {})
+            table_name = source_info.get('table', topic.split('.')[-1] if '.' in topic else 'unknown')
+            
+            # Map Debezium operation codes to readable names
+            op_code = payload.get('op', 'unknown')
+            operation_map = {'c': 'INSERT', 'u': 'UPDATE', 'd': 'DELETE', 'r': 'READ'}
+            operation = operation_map.get(op_code, op_code)
+            
+            # Get the actual data (before/after states)
+            before_data = payload.get('before')
+            after_data = payload.get('after')
+            
+            logger.info(f"Debezium event - Table: {table_name}, Operation: {operation}")
+            
+        else:
+            # Fallback for non-Debezium messages
+            table_name = event_data.get('table', topic.split('.')[-1] if '.' in topic else 'unknown')
+            operation = event_data.get('op', event_data.get('operation', 'unknown'))
+            before_data = None
+            after_data = event_data
         
         logger.info(f"Processing {operation} event for table: {table_name}")
         
@@ -50,6 +71,8 @@ def process_anime_event(message, **context):
             "processed": True, 
             "table": table_name,
             "operation": operation,
+            "before_data": before_data,
+            "after_data": after_data,
             "event_data": event_data,
             "topic": topic,
             "timestamp": datetime.now().isoformat()
@@ -83,14 +106,17 @@ def insert_to_timescale(**context):
         
         logger.info(f"Inserting {operation} event for table {table_name} into TimescaleDB")
         
-        # Create events table if not exists (adjust schema as needed)
+        # Create events table if not exists (optimized for Debezium)
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS anime_events (
             id SERIAL PRIMARY KEY,
             event_timestamp TIMESTAMPTZ NOT NULL,
             source_table VARCHAR(100) NOT NULL,
             operation VARCHAR(20) NOT NULL,
-            event_data JSONB,
+            topic VARCHAR(200),
+            before_data JSONB,
+            after_data JSONB,
+            full_event JSONB,
             processed_at TIMESTAMPTZ DEFAULT NOW()
         );
         
@@ -100,11 +126,16 @@ def insert_to_timescale(**context):
         
         postgres_hook.run(create_table_sql)
         
-        # Insert the event data
+        # Insert the event data (Debezium format)
         insert_sql = """
-        INSERT INTO anime_events (event_timestamp, source_table, operation, event_data)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO anime_events (event_timestamp, source_table, operation, topic, before_data, after_data, full_event)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
+        
+        before_data = processed_data.get('before_data')
+        after_data = processed_data.get('after_data')
+        topic = processed_data.get('topic')
+        full_event = processed_data.get('event_data')
         
         postgres_hook.run(
             insert_sql,
@@ -112,7 +143,10 @@ def insert_to_timescale(**context):
                 event_timestamp,
                 table_name,
                 operation,
-                json.dumps(event_data)
+                topic,
+                json.dumps(before_data) if before_data else None,
+                json.dumps(after_data) if after_data else None,
+                json.dumps(full_event)
             )
         )
         
