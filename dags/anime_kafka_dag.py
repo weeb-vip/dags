@@ -40,26 +40,48 @@ def consume_and_process_kafka_events(**context):
         consumer.subscribe(topics)
         
         processed_events = []
-        max_messages = 5  # Process just a few messages
+        timeout_minutes = 30  # Run for up to 30 minutes
+        batch_size = 100  # Process in batches for efficiency
+        no_message_timeout = 60.0  # Wait 60 seconds for new messages
         
-        logger.info(f"Polling for up to {max_messages} messages...")
+        start_time = datetime.now()
+        timeout_delta = timedelta(minutes=timeout_minutes)
+        consecutive_empty_polls = 0
+        max_empty_polls = 5  # Stop after 5 consecutive empty polls
         
-        for i in range(max_messages):
-            msg = consumer.poll(timeout=10.0)
+        logger.info(f"Starting continuous consumption for up to {timeout_minutes} minutes...")
+        
+        while datetime.now() - start_time < timeout_delta:
+            msg = consumer.poll(timeout=no_message_timeout)
+            
             if msg is None:
-                logger.info("No more messages available")
-                break
+                consecutive_empty_polls += 1
+                logger.info(f"No message received (attempt {consecutive_empty_polls}/{max_empty_polls})")
                 
+                if consecutive_empty_polls >= max_empty_polls:
+                    logger.info("No new messages after multiple attempts, stopping consumption")
+                    break
+                continue
+            
+            consecutive_empty_polls = 0  # Reset counter when message received
+            
             if msg.error():
                 logger.error(f"Consumer error: {msg.error()}")
                 continue
                 
-            # Process the message using our existing function
+            # Process the message
             processed_event = process_anime_event(msg, **context)
             processed_events.append(processed_event)
             
-            logger.info(f"Processed message {i+1}/{max_messages} from topic {msg.topic()}")
+            logger.info(f"Processed message from topic {msg.topic()}, total processed: {len(processed_events)}")
+            
+            # Commit offset periodically and process in batches
+            if len(processed_events) % batch_size == 0:
+                consumer.commit()
+                logger.info(f"Committed offset after {len(processed_events)} messages")
         
+        # Final commit
+        consumer.commit()
         consumer.close()
         
         logger.info(f"Successfully processed {len(processed_events)} events")
@@ -252,16 +274,18 @@ default_args = {
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
-    'retry_delay': timedelta(minutes=5)
+    'retry_delay': timedelta(minutes=5),
+    'execution_timeout': timedelta(minutes=35)  # Allow for 30min consumption + buffer
 }
 
 with DAG(
     dag_id="anime_kafka_consumer",
     default_args=default_args,
-    description="DAG to consume Kafka events from anime-db.public.<table> topics and store in TimescaleDB",
-    schedule=None,  # Event-driven, no schedule
+    description="DAG to continuously consume Kafka events and store in TimescaleDB",
+    schedule=None,  # Manual trigger for continuous consumption
     catchup=False,
-    tags=["kafka", "anime", "events", "timescale"]
+    max_active_runs=1,  # Prevent multiple instances running simultaneously
+    tags=["kafka", "anime", "events", "timescale", "continuous"]
 ) as dag:
     
     # Sensor to wait for messages on anime-db topics
