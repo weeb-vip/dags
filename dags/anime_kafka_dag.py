@@ -178,12 +178,20 @@ def insert_to_timescale(**context):
             full_event JSONB,
             processed_at TIMESTAMPTZ DEFAULT NOW()
         );
-        
-        -- Create hypertable for time-series data if not already created
-        SELECT create_hypertable('anime_events', 'event_timestamp', if_not_exists => TRUE);
         """
         
         postgres_hook.run(create_table_sql)
+        
+        # Create hypertable separately - only if TimescaleDB extension is available
+        try:
+            extension_check = postgres_hook.get_first("SELECT * FROM pg_extension WHERE extname = 'timescaledb';")
+            if extension_check:
+                postgres_hook.run("SELECT create_hypertable('anime_events', 'event_timestamp', if_not_exists => TRUE);")
+                logger.info("✅ Hypertable created successfully")
+            else:
+                logger.info("TimescaleDB extension not available, using regular PostgreSQL table")
+        except Exception as e:
+            logger.warning(f"Hypertable creation failed, continuing with regular table: {e}")
         
         inserted_count = 0
         
@@ -197,12 +205,20 @@ def insert_to_timescale(**context):
             topic = event.get('topic')
             full_event = event.get('event_data')
             
+            # Convert ISO timestamp string to datetime object
+            if isinstance(event_timestamp, str):
+                try:
+                    from datetime import datetime
+                    event_timestamp = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
+                except ValueError:
+                    event_timestamp = datetime.now()
+            
             logger.info(f"Inserting {operation} event for table {table_name} into TimescaleDB")
             
-            # Insert the event data (Debezium format)
+            # Insert the event data - let PostgreSQL handle JSONB conversion
             insert_sql = """
             INSERT INTO anime_events (event_timestamp, source_table, operation, topic, before_data, after_data, full_event)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
             """
             
             postgres_hook.run(
