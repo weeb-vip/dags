@@ -65,12 +65,14 @@ def sync_users_table():
         column_defs = []
         for col in columns_result:
             col_name, col_type = col[0], col[1]
-            if 'int' in col_type.lower() and col_name == 'id':
-                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            if col_name == 'id':
+                column_defs.append(f"{col_name} TEXT PRIMARY KEY")
             elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
                 column_defs.append(f"{col_name} TIMESTAMP")
             elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
                 column_defs.append(f"{col_name} TEXT")
+            elif 'int' in col_type.lower():
+                column_defs.append(f"{col_name} INTEGER")
             else:
                 column_defs.append(f"{col_name} TEXT")
         
@@ -133,12 +135,14 @@ def sync_user_list_table():
         column_defs = []
         for col in columns_result:
             col_name, col_type = col[0], col[1]
-            if 'int' in col_type.lower() and col_name == 'id':
-                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            if col_name == 'id':
+                column_defs.append(f"{col_name} TEXT PRIMARY KEY")
             elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
                 column_defs.append(f"{col_name} TIMESTAMP")
             elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
                 column_defs.append(f"{col_name} TEXT")
+            elif 'int' in col_type.lower():
+                column_defs.append(f"{col_name} INTEGER")
             else:
                 column_defs.append(f"{col_name} TEXT")
         
@@ -197,12 +201,14 @@ def sync_user_anime_table():
         column_defs = []
         for col in columns_result:
             col_name, col_type = col[0], col[1]
-            if 'int' in col_type.lower() and col_name == 'id':
-                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            if col_name == 'id':
+                column_defs.append(f"{col_name} TEXT PRIMARY KEY")
             elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
                 column_defs.append(f"{col_name} TIMESTAMP")
             elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
                 column_defs.append(f"{col_name} TEXT")
+            elif 'int' in col_type.lower():
+                column_defs.append(f"{col_name} INTEGER")
             else:
                 column_defs.append(f"{col_name} TEXT")
         
