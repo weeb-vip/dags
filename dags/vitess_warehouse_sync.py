@@ -48,34 +48,50 @@ def sync_users_table():
     
     # Build incremental query
     if last_sync:
-        # Incremental sync - assuming updated_at column exists
         users_query = f"SELECT * FROM users WHERE updated_at > '{last_sync}' OR created_at > '{last_sync}'"
         logger.info(f"Incremental sync from {last_sync}")
     else:
-        # Initial full sync
         users_query = "SELECT * FROM users"
         logger.info("Full sync - first time")
     
     users_data = vitess_hook.get_records(users_query)
     
     if users_data:
-        # Create table if not exists
-        warehouse_hook.run("""
+        # Get column names to build dynamic table
+        columns_result = vitess_hook.get_records("DESCRIBE users")
+        columns = [col[0] for col in columns_result]
+        
+        # Create table with actual schema
+        column_defs = []
+        for col in columns_result:
+            col_name, col_type = col[0], col[1]
+            if 'int' in col_type.lower() and col_name == 'id':
+                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
+                column_defs.append(f"{col_name} TIMESTAMP")
+            elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
+                column_defs.append(f"{col_name} TEXT")
+            else:
+                column_defs.append(f"{col_name} TEXT")
+        
+        column_defs.append("synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        
+        warehouse_hook.run(f"""
             CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(column_defs)}
             )
         """)
         
         # Upsert data
+        placeholders = ','.join(['%s'] * len(columns))
+        columns_str = ','.join(columns)
+        update_cols = ','.join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'id'])
+        
         for row in users_data:
-            # Assuming first column is ID - adjust based on your schema
             warehouse_hook.run(f"""
-                INSERT INTO users SELECT {','.join(['%s'] * len(row))}
+                INSERT INTO users ({columns_str}) VALUES ({placeholders})
                 ON CONFLICT (id) DO UPDATE SET 
-                    updated_at = EXCLUDED.updated_at,
+                    {update_cols},
                     synced_at = CURRENT_TIMESTAMP
             """, parameters=row)
         
@@ -110,20 +126,39 @@ def sync_user_list_table():
     user_list_data = vitess_hook.get_records(user_list_query)
     
     if user_list_data:
-        warehouse_hook.run("""
+        # Get column schema
+        columns_result = vitess_hook.get_records("DESCRIBE user_list")
+        columns = [col[0] for col in columns_result]
+        
+        column_defs = []
+        for col in columns_result:
+            col_name, col_type = col[0], col[1]
+            if 'int' in col_type.lower() and col_name == 'id':
+                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
+                column_defs.append(f"{col_name} TIMESTAMP")
+            elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
+                column_defs.append(f"{col_name} TEXT")
+            else:
+                column_defs.append(f"{col_name} TEXT")
+        
+        column_defs.append("synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        
+        warehouse_hook.run(f"""
             CREATE TABLE IF NOT EXISTS user_list (
-                id SERIAL PRIMARY KEY,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(column_defs)}
             )
         """)
         
+        placeholders = ','.join(['%s'] * len(columns))
+        columns_str = ','.join(columns)
+        update_cols = ','.join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'id'])
+        
         for row in user_list_data:
             warehouse_hook.run(f"""
-                INSERT INTO user_list SELECT {','.join(['%s'] * len(row))}
+                INSERT INTO user_list ({columns_str}) VALUES ({placeholders})
                 ON CONFLICT (id) DO UPDATE SET 
-                    updated_at = EXCLUDED.updated_at,
+                    {update_cols},
                     synced_at = CURRENT_TIMESTAMP
             """, parameters=row)
         
@@ -155,20 +190,39 @@ def sync_user_anime_table():
     user_anime_data = vitess_hook.get_records(user_anime_query)
     
     if user_anime_data:
-        warehouse_hook.run("""
+        # Get column schema
+        columns_result = vitess_hook.get_records("DESCRIBE user_anime")
+        columns = [col[0] for col in columns_result]
+        
+        column_defs = []
+        for col in columns_result:
+            col_name, col_type = col[0], col[1]
+            if 'int' in col_type.lower() and col_name == 'id':
+                column_defs.append(f"{col_name} INTEGER PRIMARY KEY")
+            elif 'timestamp' in col_type.lower() or 'datetime' in col_type.lower():
+                column_defs.append(f"{col_name} TIMESTAMP")
+            elif 'varchar' in col_type.lower() or 'text' in col_type.lower():
+                column_defs.append(f"{col_name} TEXT")
+            else:
+                column_defs.append(f"{col_name} TEXT")
+        
+        column_defs.append("synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        
+        warehouse_hook.run(f"""
             CREATE TABLE IF NOT EXISTS user_anime (
-                id SERIAL PRIMARY KEY,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(column_defs)}
             )
         """)
         
+        placeholders = ','.join(['%s'] * len(columns))
+        columns_str = ','.join(columns)
+        update_cols = ','.join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'id'])
+        
         for row in user_anime_data:
             warehouse_hook.run(f"""
-                INSERT INTO user_anime SELECT {','.join(['%s'] * len(row))}
+                INSERT INTO user_anime ({columns_str}) VALUES ({placeholders})
                 ON CONFLICT (id) DO UPDATE SET 
-                    updated_at = EXCLUDED.updated_at,
+                    {update_cols},
                     synced_at = CURRENT_TIMESTAMP
             """, parameters=row)
         
